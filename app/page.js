@@ -60,7 +60,18 @@ handleUpload(file)
 
 
 
+function unlockSpeech(){
+
+const speech = new SpeechSynthesisUtterance("")
+window.speechSynthesis.speak(speech)
+
+}
+
+
+
 function speak(text){
+
+if(!text) return
 
 window.speechSynthesis.cancel()
 
@@ -77,6 +88,8 @@ window.speechSynthesis.speak(speech)
 
 
 async function askAI(){
+
+unlockSpeech()
 
 setLoading(true)
 
@@ -105,7 +118,7 @@ setLoading(false)
 
 setTimeout(()=>{
 speak(data.reply)
-},100)
+},300)
 
 startMonitorMode()
 

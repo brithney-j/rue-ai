@@ -1,31 +1,31 @@
-import OpenAI from "openai";
+import OpenAI from "openai"
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+apiKey: process.env.OPENAI_API_KEY
+})
 
 export async function POST(req){
 
-  const { mode, message, image, session } = await req.json();
+const { mode, image, session } = await req.json()
 
 
 
-  if(mode === "analyze"){
+if(mode === "analyze"){
 
-    const response = await openai.responses.create({
+const response = await openai.responses.create({
 
-      model:"gpt-4.1",
+model:"gpt-4.1",
 
-      input:[{
-        role:"user",
-        content:[
-          {
-            type:"input_text",
-            text:`
+input:[{
+role:"user",
+content:[
+{
+type:"input_text",
+text:`
 
-You are RUE, an excited, calm. supportive, AI sous chef.
+You are RUE, an enthusiastic AI sous chef.
 
-Look at the food and determine:
+Look at the food image and determine:
 
 1. Dish name
 2. Visible ingredients
@@ -37,7 +37,7 @@ Look at the food and determine:
 
 Respond in SHORT, CLEAR bullet points.
 
-Example style:
+Example response style:
 
 Dish: Yum. Chicken Stir Fry. Great choice!
 Ingredients: chicken, bell peppers, garlic
@@ -50,115 +50,99 @@ Next step: stir vegetables now
 
 End with ONE clear next action.
 
-Return JSON:
+Next step:
+[one clear action]
 
-{
-"dish":"",
-"ingredients":[],
-"stage":"",
-"next_step":""
-}
+Keep it short and energetic.
 
 `
-          },
+},
 
-          image && {
-            type:"input_image",
-            image_url:image
-          }
+image && {
+type:"input_image",
+image_url:image
+}
 
-        ].filter(Boolean)
-      }]
+].filter(Boolean)
+}]
 
-    });
+})
 
-    const text = response.output_text;
+const reply = response.output_text
 
-    let parsed;
+return Response.json({
 
-    try{
-      parsed = JSON.parse(text);
-    }catch{
-      parsed = {
-        dish:message,
-        ingredients:[],
-        stage:"unknown",
-        next_step:text
-      };
-    }
+reply,
 
+session:{
+...session,
+lastAdvice:reply,
+lastMonitorNote:"",
+startTime:Date.now()
+}
 
+})
 
-    return Response.json({
-
-      reply:parsed.next_step,
-
-      session:{
-        dish:parsed.dish,
-        ingredients:parsed.ingredients,
-        stage:parsed.stage,
-        step:1,
-        lastAdvice:parsed.next_step,
-        lastMonitorNote:""
-      }
-
-    });
-
-  }
+}
 
 
 
-  if(mode === "monitor"){
+if(mode === "monitor"){
 
-    const response = await openai.responses.create({
+const response = await openai.responses.create({
 
-      model:"gpt-4.1",
+model:"gpt-4.1",
 
-      input:[{
-        role:"user",
-        content:[
-          {
-            type:"input_text",
-            text:`
+input:[{
+role:"user",
+content:[
+{
+type:"input_text",
+text:`
 
 You are monitoring a cooking pan.
 
 Dish: ${session?.dish}
 
-Ingredients: ${session?.ingredients?.join(", ")}
-
-Cooking stage: ${session?.stage}
+Previous instruction:
+${session?.lastAdvice}
 
 Elapsed cook time: ${session?.elapsedMinutes} minutes
 
-Previous instruction: ${session?.lastAdvice}
-
 Only respond if action is needed:
+
 flip food
 reduce heat
 stir ingredients
 remove from pan
 food burning
+food finished
 
 If nothing changed return nothing.
 
+If action is needed respond like:
+
+"Flip the salmon now."
+
+Maximum 10 words.
+
 `
-          },
+},
 
-          image && {
-            type:"input_image",
-            image_url:image
-          }
+image && {
+type:"input_image",
+image_url:image
+}
 
-        ].filter(Boolean)
-      }]
+].filter(Boolean)
+}]
 
-    });
+})
 
-    const reply = response.output_text;
+const reply = response.output_text
 
-    return Response.json({reply});
+return Response.json({reply})
 
-  }
+}
 
 }
