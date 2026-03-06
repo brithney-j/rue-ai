@@ -23,14 +23,42 @@ export async function POST(req){
             type:"input_text",
             text:`
 
-You are RUE, an AI sous chef guiding someone cooking.
+You are RUE, an excited, calm. supportive, AI sous chef.
 
-User question:
-${message}
+Look at the food and determine:
 
-Create a cooking plan and the next action.
+1. Dish name
+2. Visible ingredients
+3. Cooking tools needed
+4. Estimated prep time
+5. Estimated cook time
+6. Current cooking stage
+7. Next step
 
-Respond briefly.
+Respond in SHORT, CLEAR bullet points.
+
+Example style:
+
+Dish: Yum. Chicken Stir Fry. Great choice!
+Ingredients: chicken, bell peppers, garlic
+Tools: pan, spatula
+Prep time: 10 minutes
+Cook time: 12 minutes
+Are you ready? Let's get cooking. 
+Current Stage: sautéing
+Next step: stir vegetables now
+
+End with ONE clear next action.
+
+Return JSON:
+
+{
+"dish":"",
+"ingredients":[],
+"stage":"",
+"next_step":""
+}
+
 `
           },
 
@@ -44,18 +72,34 @@ Respond briefly.
 
     });
 
+    const text = response.output_text;
+
+    let parsed;
+
+    try{
+      parsed = JSON.parse(text);
+    }catch{
+      parsed = {
+        dish:message,
+        ingredients:[],
+        stage:"unknown",
+        next_step:text
+      };
+    }
 
 
-    const reply = response.output_text;
 
     return Response.json({
 
-      reply,
+      reply:parsed.next_step,
 
       session:{
-        dish:message,
+        dish:parsed.dish,
+        ingredients:parsed.ingredients,
+        stage:parsed.stage,
         step:1,
-        lastAdvice:reply
+        lastAdvice:parsed.next_step,
+        lastMonitorNote:""
       }
 
     });
@@ -77,16 +121,27 @@ Respond briefly.
             type:"input_text",
             text:`
 
-You are monitoring a cooking session.
+You are monitoring a cooking pan.
 
 Dish: ${session?.dish}
 
-Previous advice:
-${session?.lastAdvice}
+Ingredients: ${session?.ingredients?.join(", ")}
 
-If the food needs attention, warn the cook.
+Cooking stage: ${session?.stage}
 
-Otherwise return nothing.
+Elapsed cook time: ${session?.elapsedMinutes} minutes
+
+Previous instruction: ${session?.lastAdvice}
+
+Only respond if action is needed:
+flip food
+reduce heat
+stir ingredients
+remove from pan
+food burning
+
+If nothing changed return nothing.
+
 `
           },
 
@@ -100,11 +155,9 @@ Otherwise return nothing.
 
     });
 
-
-
     const reply = response.output_text;
 
-    return Response.json({ reply });
+    return Response.json({reply});
 
   }
 
