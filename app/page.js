@@ -10,19 +10,44 @@ const [loading,setLoading] = useState(false)
 const [monitorMode,setMonitorMode] = useState(false)
 const [cookTime,setCookTime] = useState(0)
 
-const [session,setSession] = useState({
-dish:"",
-ingredients:[],
-stage:"",
-step:0,
-lastAdvice:"",
-lastMonitorNote:"",
-startTime:null
-})
-
 const videoRef = useRef(null)
 const canvasRef = useRef(null)
 const fileInputRef = useRef(null)
+
+const monitorIntervalRef = useRef(null)
+const timerIntervalRef = useRef(null)
+
+
+
+/*
+-------------------------
+MOBILE SPEECH UNLOCK FIX
+-------------------------
+*/
+
+const unlockSpeech = () => {
+  const msg = new SpeechSynthesisUtterance("")
+  msg.volume = 0
+  speechSynthesis.speak(msg)
+}
+
+
+
+function speak(text){
+
+if(!text) return
+
+window.speechSynthesis.cancel()
+
+const speech = new SpeechSynthesisUtterance(text)
+
+speech.rate = 1
+speech.pitch = 1
+speech.lang = "en-US"
+
+window.speechSynthesis.speak(speech)
+
+}
 
 
 
@@ -60,33 +85,6 @@ handleUpload(file)
 
 
 
-function unlockSpeech(){
-
-const speech = new SpeechSynthesisUtterance("")
-window.speechSynthesis.speak(speech)
-
-}
-
-
-
-function speak(text){
-
-if(!text) return
-
-window.speechSynthesis.cancel()
-
-const speech = new SpeechSynthesisUtterance(text)
-
-speech.rate = 1
-speech.pitch = 1
-speech.lang = "en-US"
-
-window.speechSynthesis.speak(speech)
-
-}
-
-
-
 async function askAI(){
 
 unlockSpeech()
@@ -99,20 +97,13 @@ headers:{
 "Content-Type":"application/json"
 },
 body:JSON.stringify({
-mode:"analyze",
-image,
-session
+image
 })
 })
 
 const data = await res.json()
 
 setReply(data.reply)
-
-setSession({
-...data.session,
-startTime:Date.now()
-})
 
 setLoading(false)
 
@@ -128,6 +119,8 @@ startMonitorMode()
 
 async function startMonitorMode(){
 
+if(monitorMode) return
+
 const stream = await navigator.mediaDevices.getUserMedia({
 video:{facingMode:"environment"}
 })
@@ -138,9 +131,23 @@ videoRef.current.srcObject = stream
 
 setMonitorMode(true)
 
-setInterval(()=>{
+
+
+/*
+-------------------------
+SAFE TIMER (ONLY STARTS ONCE)
+-------------------------
+*/
+
+if(!timerIntervalRef.current){
+
+timerIntervalRef.current = setInterval(()=>{
 setCookTime(prev=>prev+1)
 },1000)
+
+}
+
+
 
 startMonitoring()
 
@@ -152,6 +159,8 @@ function captureFrame(){
 
 const canvas = canvasRef.current
 const video = videoRef.current
+
+if(!video) return null
 
 const ctx = canvas.getContext("2d")
 
@@ -168,11 +177,21 @@ return canvas.toDataURL("image/png")
 
 function startMonitoring(){
 
-setInterval(async()=>{
+if(monitorIntervalRef.current) return
+
+
+
+/*
+-------------------------
+MONITOR LOOP (SAFEGUARD)
+-------------------------
+*/
+
+monitorIntervalRef.current = setInterval(async()=>{
 
 const frame = captureFrame()
 
-const elapsedMinutes = Math.floor((Date.now() - session.startTime)/60000)
+if(!frame) return
 
 const res = await fetch("/api/cook",{
 method:"POST",
@@ -181,24 +200,15 @@ headers:{
 },
 body:JSON.stringify({
 mode:"monitor",
-image:frame,
-session:{
-...session,
-elapsedMinutes
-}
+image:frame
 })
 })
 
 const data = await res.json()
 
-if(data.reply && data.reply !== session.lastMonitorNote){
+if(data.reply){
 
 speak(data.reply)
-
-setSession(prev=>({
-...prev,
-lastMonitorNote:data.reply
-}))
 
 }
 
@@ -334,14 +344,6 @@ marginBottom:8
 🔊 RUE Cooking Mode
 </div>
 
-<div style={{
-fontSize:14,
-color:"#666",
-marginBottom:12
-}}>
-{session.dish}
-</div>
-
 <video
 ref={videoRef}
 autoPlay
@@ -383,7 +385,8 @@ padding:18,
 background:"#FFF7F2",
 borderRadius:12,
 fontSize:16,
-fontWeight:500
+fontWeight:500,
+whiteSpace:"pre-line"
 }}>
 
 👨‍🍳 RUE says:

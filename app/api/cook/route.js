@@ -1,148 +1,92 @@
 import OpenAI from "openai"
 
 const openai = new OpenAI({
-apiKey: process.env.OPENAI_API_KEY
+  apiKey: process.env.OPENAI_API_KEY
 })
 
-export async function POST(req){
+export async function POST(req) {
 
-const { mode, image, session } = await req.json()
+  const { message, image } = await req.json()
 
+  const response = await openai.responses.create({
+    model: "gpt-4.1",
+    input: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: `You are RUE, an AI sous chef guiding someone cooking in real time.
 
+Analyze the food image carefully and respond EXACTLY in this format:
 
-if(mode === "analyze"){
+Dish:
+<Intrigue and approval> This is <dish name>
 
-const response = await openai.responses.create({
+Ingredients detected:
+• item
+• item
+• item
 
-model:"gpt-4.1",
+Tools needed:
+• tool
+• tool
 
-input:[{
-role:"user",
-content:[
-{
-type:"input_text",
-text:`
+Estimated prep time:
+<time estimate>
 
-You are RUE, an enthusiastic AI sous chef.
+Ask 'are you ready to start cooking?'
 
-Look at the food image and determine:
+Next cooking steps:
+1. step
+2. step
+3. step
 
-1. Dish name
-2. Visible ingredients
-3. Cooking tools needed
-4. Estimated prep time
-5. Estimated cook time
-6. Current cooking stage
-7. Next step
-
-Respond in SHORT, CLEAR bullet points.
-
-Example response style:
-
-Dish: Yum. Chicken Stir Fry. Great choice!
-Ingredients: chicken, bell peppers, garlic
-Tools: pan, spatula
-Prep time: 10 minutes
-Cook time: 12 minutes
-Are you ready? Let's get cooking. 
-Current Stage: sautéing
-Next step: stir vegetables now
-
-End with ONE clear next action.
-
-Next step:
-[one clear action]
-
-Keep it short and energetic.
-
+Rules:
+- Never respond in paragraph form
+- Always use bullet points
+- Always separate sections with blank lines
+- Speak like an encouraging cooking coach
+- Keep steps short, clear and actionable
 `
-},
+          },
 
-image && {
-type:"input_image",
-image_url:image
-}
+          image && {
+            type: "input_image",
+            image_url: image
+          }
 
-].filter(Boolean)
-}]
+        ].filter(Boolean)
+      }
+    ]
+  })
 
-})
-
-const reply = response.output_text
-
-return Response.json({
-
-reply,
-
-session:{
-...session,
-lastAdvice:reply,
-lastMonitorNote:"",
-startTime:Date.now()
-}
-
-})
-
-}
+  let text = response.output_text || "Sorry, I couldn't analyze that."
 
 
 
-if(mode === "monitor"){
+  /*
+  ------------------------------
+  12 LINE UX FORMATTING UPGRADE
+  ------------------------------
+  Cleans AI output and ensures
+  clean spacing for UI rendering
+  */
 
-const response = await openai.responses.create({
+  text = text
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/^\s+|\s+$/g, "")
+    .replace(/•/g, "• ")
+    .replace(/\n-/g, "\n• ")
+    .replace(/Ingredients detected:/i, "🍅 Ingredients detected:")
+    .replace(/Tools needed:/i, "🔪 Tools needed:")
+    .replace(/Estimated prep time:/i, "⏱ Prep time:")
+    .replace(/Next cooking steps:/i, "👨‍🍳 Next steps:")
+    .replace(/Dish:/i, "🍽 Dish:")
 
-model:"gpt-4.1",
 
-input:[{
-role:"user",
-content:[
-{
-type:"input_text",
-text:`
 
-You are monitoring a cooking pan.
-
-Dish: ${session?.dish}
-
-Previous instruction:
-${session?.lastAdvice}
-
-Elapsed cook time: ${session?.elapsedMinutes} minutes
-
-Only respond if action is needed:
-
-flip food
-reduce heat
-stir ingredients
-remove from pan
-food burning
-food finished
-
-If nothing changed return nothing.
-
-If action is needed respond like:
-
-"Flip the salmon now."
-
-Maximum 10 words.
-
-`
-},
-
-image && {
-type:"input_image",
-image_url:image
-}
-
-].filter(Boolean)
-}]
-
-})
-
-const reply = response.output_text
-
-return Response.json({reply})
-
-}
-
+  return Response.json({
+    reply: text
+  })
 }
