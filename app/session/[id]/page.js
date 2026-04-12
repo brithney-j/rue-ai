@@ -1,8 +1,8 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { getCurrentStep, nextStep } from "@/lib/session-engine"
-import { speakText, stopSpeech } from "@/lib/speech"
+import { getCurrentStep, nextStep } from "../../../lib/session-engine"
+import { speakText, stopSpeech } from "../../../lib/speech"
 
 export default function SessionPage({ params }) {
   const [plan, setPlan] = useState(null)
