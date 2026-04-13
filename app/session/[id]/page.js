@@ -1,7 +1,12 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { getCurrentStep, nextStep } from "../../../lib/session-engine"
+import {
+  getCurrentStep,
+  nextStep,
+  startStep,
+  computeRemainingSec
+} from "../../../lib/session-engine"
 import { speakText, stopSpeech } from "../../../lib/speech"
 
 export default function SessionPage({ params }) {
@@ -9,6 +14,9 @@ export default function SessionPage({ params }) {
   const [session, setSession] = useState(null)
   const [voiceState, setVoiceState] = useState("idle")
   const [transcript, setTranscript] = useState("")
+  const [timerRemaining, setTimerRemaining] = useState(0)
+  const [monitorFeedback, setMonitorFeedback] = useState("")
+  const spokenRef = useRef(false)
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
   const timerRef = useRef(null)
@@ -24,25 +32,44 @@ export default function SessionPage({ params }) {
     const step = getCurrentStep(plan, session)
     if (!step || session.status !== "active") return
 
+    const remaining = computeRemainingSec(session)
+    setTimerRemaining(remaining)
+
+    if (session.lastSpokenStepIndex === session.currentStepIndex) return
+
     speakText(
       `Step ${session.currentStepIndex + 1}. ${step.instruction}`,
       () => setVoiceState("speaking"),
-      () => setVoiceState("idle")
+      async () => {
+        setVoiceState("idle")
+        await sync({
+          ...session,
+          lastSpokenStepIndex: session.currentStepIndex
+        })
+      }
     )
   }, [plan?.id, session?.currentStepIndex, session?.status])
 
   useEffect(() => {
     if (!session || session.status !== "active") return
 
-    timerRef.current = setInterval(() => {
-      setSession((prev) => ({ ...prev, cookTimeSec: prev.cookTimeSec + 1 }))
+    timerRef.current = setInterval(async () => {
+      setSession((prev) => {
+        if (!prev) return prev
+        const remaining = computeRemainingSec(prev)
+        return {
+          ...prev,
+          cookTimeSec: prev.cookTimeSec + 1,
+          timerRemainingSec: remaining
+        }
+      })
     }, 1000)
 
     return () => clearInterval(timerRef.current)
   }, [session?.status])
 
   useEffect(() => {
-    if (!session || session.status !== "active") return
+    if (!session || session.status !== "active" || !plan) return
 
     startCamera()
 
@@ -61,11 +88,24 @@ export default function SessionPage({ params }) {
       const result = await res.json()
 
       if (result.feedback) {
-        setSession((prev) => ({ ...prev, feedback: result.feedback }))
+        setMonitorFeedback(result.feedback)
+        setSession((prev) => ({
+          ...prev,
+          feedback: result.feedback
+        }))
+      }
+
+      if (result.status === "attention") {
+        stopSpeech()
+        speakText(
+          result.feedback,
+          () => setVoiceState("speaking"),
+          () => setVoiceState("idle")
+        )
       }
 
       if (result.shouldAdvance) {
-        handleNext()
+        await handleNext()
       }
     }, 8000)
 
@@ -77,6 +117,7 @@ export default function SessionPage({ params }) {
     const data = await res.json()
     setPlan(data.plan)
     setSession(data.session)
+    setTimerRemaining(data.session?.timerRemainingSec || 0)
   }
 
   async function sync(next) {
@@ -92,7 +133,11 @@ export default function SessionPage({ params }) {
         status: next.status,
         cookTimeSec: next.cookTimeSec,
         feedback: next.feedback,
-        lastMonitorAt: new Date().toISOString()
+        lastMonitorAt: new Date().toISOString(),
+        currentStepStartedAt: next.currentStepStartedAt,
+        currentStepDueAt: next.currentStepDueAt,
+        lastSpokenStepIndex: next.lastSpokenStepIndex,
+        timerRemainingSec: next.timerRemainingSec
       })
     })
   }
@@ -121,16 +166,28 @@ export default function SessionPage({ params }) {
 
   async function handlePause() {
     stopSpeech()
-    await sync({ ...session, status: "paused", feedback: "Session paused." })
+    await sync({
+      ...session,
+      status: "paused",
+      feedback: "Session paused."
+    })
   }
 
   async function handleResume() {
-    await sync({ ...session, status: "active", feedback: "Session resumed." })
+    if (!plan || !session) return
+    const resumed = startStep(session, plan, session.currentStepIndex)
+    resumed.cookTimeSec = session.cookTimeSec
+    resumed.lastSpokenStepIndex = -1
+    await sync(resumed)
   }
 
   async function handleEnd() {
     stopSpeech()
-    await sync({ ...session, status: "ended", feedback: "Session ended." })
+    await sync({
+      ...session,
+      status: "ended",
+      feedback: "Session ended."
+    })
   }
 
   function startListening() {
@@ -163,6 +220,13 @@ export default function SessionPage({ params }) {
       else if (/pause|stop/.test(lower)) handlePause()
       else if (/resume|continue cooking/.test(lower)) handleResume()
       else if (/end|finish|quit/.test(lower)) handleEnd()
+      else if (/how much longer|time left/.test(lower)) {
+        speakText(
+          `${timerRemaining} seconds remaining.`,
+          () => setVoiceState("speaking"),
+          () => setVoiceState("idle")
+        )
+      }
     }
 
     recognition.start()
@@ -226,14 +290,14 @@ export default function SessionPage({ params }) {
             {session.status === "completed" ? "All steps completed." : step?.instruction}
           </div>
           <div style={{ marginTop: 12, color: "#F7C7B3" }}>
-            Heat: {step?.heatLevel || "medium"} • {step?.durationSec || 0}s
+            Heat: {step?.heatLevel || "medium"} • {timerRemaining}s left
           </div>
         </div>
 
         <div style={panel}>
           <div style={label}>Feedback</div>
           <div style={{ marginTop: 10, fontSize: 20 }}>
-            {session.feedback || "Waiting for update."}
+            {monitorFeedback || session.feedback || "Waiting for update."}
           </div>
         </div>
 
