@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
-import { openai } from "@/lib/openai"
-import { supabase } from "@/lib/supabase"
+import { openai } from "../../../lib/openai"
+import { supabase } from "../../../lib/supabase"
 
 function extractJson(text) {
   const fenced = text.match(/```json\s*([\s\S]*?)```/i)
@@ -13,12 +13,19 @@ function extractJson(text) {
     return JSON.parse(text.slice(start, end + 1))
   }
 
-  throw new Error("No JSON found")
+  throw new Error("No JSON found in model response")
 }
 
 export async function POST(req) {
   try {
     const { image, fileName } = await req.json()
+
+    if (!image) {
+      return NextResponse.json({ error: "No image provided" }, { status: 400 })
+    }
+
+    console.log("ANALYZE: request received")
+    console.log("ANALYZE: filename =", fileName || "unknown")
 
     const response = await openai.responses.create({
       model: "gpt-4.1",
@@ -67,7 +74,10 @@ Rules:
       ]
     })
 
+    console.log("ANALYZE: model responded")
+
     const parsed = extractJson(response.output_text || "")
+    console.log("ANALYZE: parsed json")
 
     const plan = {
       id: crypto.randomUUID(),
@@ -92,8 +102,11 @@ Rules:
     const { error } = await supabase.from("session_plans").insert(plan)
 
     if (error) {
+      console.error("ANALYZE: supabase insert failed", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
+
+    console.log("ANALYZE: inserted plan", plan.id)
 
     return NextResponse.json({
       plan: {
